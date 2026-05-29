@@ -4,6 +4,12 @@ Punto Banco jugable en la terminal. Te enseña las reglas mientras jugás — te
 
 ![Node.js](https://img.shields.io/badge/Node.js-builtin--only-339933?style=flat-square&logo=nodedotjs) ![Single File](https://img.shields.io/badge/Single%20file-741%20lines-f59e0b?style=flat-square) ![Zero deps](https://img.shields.io/badge/Dependencies-zero-22c55e?style=flat-square)
 
+## 🔗 [Repositorio → github.com/tommyhanono/baccarat-terminal](https://github.com/tommyhanono/baccarat-terminal)
+
+Cloná y corré localmente — no hay deploy web, es un juego de terminal.
+
+---
+
 ## ▶️ Correr
 
 ```bash
