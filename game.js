@@ -32,8 +32,22 @@ const term = new Terminal({
 const fitAddon = new FitAddon.FitAddon();
 term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
-setTimeout(() => { fitAddon.fit(); startGame(); }, 50);
-window.addEventListener('resize', () => fitAddon.fit());
+
+function doFit() {
+  fitAddon.fit();
+}
+
+// Fit on load — requestAnimationFrame ensures the DOM has real pixel dimensions
+window.addEventListener('load', () => {
+  requestAnimationFrame(() => {
+    doFit();
+    startGame();
+  });
+});
+
+window.addEventListener('resize', () => {
+  doFit();
+});
 
 // ── I/O layer ─────────────────────────────────────────────────────────────────
 const out  = s  => term.write(s);

@@ -9,17 +9,22 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       background: #0d0d0d;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       overflow: hidden;
     }
     #terminal {
-      width: 100%;
-      height: 100%;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
     }
-    .xterm { height: 100%; }
-    .xterm-screen { height: 100% !important; }
+    /* force xterm canvas to fill container */
+    .xterm,
+    .xterm-screen,
+    .xterm-helpers { height: 100% !important; }
     .xterm-viewport { overflow-y: hidden !important; }
+    .xterm .xterm-screen canvas { display: block; }
 
     #mobile-warning {
       display: none;
