@@ -158,30 +158,100 @@ function updateDerivedRoads() {
   g.smallRoad = computeDerivedRoad(3);
 }
 
-function updateInsight() {
+// ── Pattern analysis (shared by insight + coach) ─────────────────────────────
+function analyzePatterns() {
   const nt = g.history.filter(x => x !== 'T');
-  if (!nt.length) { g.insight = ''; g.prediction = ''; return; }
+  const cols = g.bigRoad;
+
+  // Current streak
   let bStr = 0, pStr = 0;
   for (let i = nt.length-1; i >= 0 && nt[i]==='B'; i--) bStr++;
   for (let i = nt.length-1; i >= 0 && nt[i]==='P'; i--) pStr++;
-  let alt = nt.length >= 4;
-  for (let i = 1; i < Math.min(nt.length,6); i++)
-    if (nt[nt.length-i] === nt[nt.length-i-1]) { alt = false; break; }
-  let bebRed = 0;
-  for (let i = g.bigEyeBoy.length-1; i >= 0 && g.bigEyeBoy[i]==='R'; i--) bebRed++;
+  const streak = bStr >= 2 ? { side:'B', len:bStr } : pStr >= 2 ? { side:'P', len:pStr } : null;
 
-  if (bStr >= 3) {
-    g.insight = `🔴 Banker streak: ${bStr} — casino players often ride this`;
-    g.prediction = `Roads lean Banker — superstition, not math`;
-  } else if (pStr >= 3) {
-    g.insight = `🔵 Player streak: ${pStr} — notable run for Player`;
-    g.prediction = `Roads lean Player — superstition, not math`;
-  } else if (alt) {
-    g.insight = `🔵 Chopping pattern — some players bet the chop`;
-    g.prediction = `Roads lean ${nt.at(-1)==='B'?'Player':'Banker'} — superstition, not math`;
-  } else if (bebRed >= 4) {
-    g.insight = `Pattern repeating — Big Eye roads matching`;
-    g.prediction = `Roads lean Unclear — superstition, not math`;
+  // Chopping: strict alternation last 4+
+  let isChopping = nt.length >= 4;
+  for (let i = 1; i < Math.min(nt.length,6); i++)
+    if (nt[nt.length-i] === nt[nt.length-i-1]) { isChopping = false; break; }
+
+  // Double road: pairs switching (BB-PP-BB or PP-BB-PP)
+  let isDouble = false;
+  if (cols.length >= 3) {
+    const last3 = cols.slice(-3).map(c => c.length);
+    isDouble = last3.every(l => l === 2);
+  }
+
+  // Big Eye Boy consensus (last 3 dots)
+  const beb = g.bigEyeBoy;
+  let bebRed = 0, bebBlue = 0;
+  for (let i = beb.length-1; i >= Math.max(0, beb.length-4); i--) {
+    if (beb[i] === 'R') bebRed++; else bebBlue++;
+  }
+  const bebSignal = bebRed >= 3 ? 'repeating' : bebBlue >= 3 ? 'breaking' : 'mixed';
+
+  // Small Road consensus (last 3 dots)
+  const sr = g.smallRoad;
+  let srRed = 0, srBlue = 0;
+  for (let i = sr.length-1; i >= Math.max(0, sr.length-4); i--) {
+    if (sr[i] === 'R') srRed++; else srBlue++;
+  }
+  const srSignal = srRed >= 3 ? 'repeating' : srBlue >= 3 ? 'breaking' : 'mixed';
+
+  // Column structure: are columns roughly equal length (regularity)?
+  const colLens = cols.slice(-6).map(c => c.length);
+  const avgLen = colLens.reduce((a,b) => a+b, 0) / (colLens.length || 1);
+  const isRegular = colLens.length >= 4 && colLens.every(l => Math.abs(l - avgLen) <= 1);
+
+  // Pattern name
+  let patternName = null;
+  if (streak && streak.len >= 5) patternName = 'dragon';
+  else if (streak && streak.len >= 3) patternName = 'streak';
+  else if (isChopping) patternName = 'ping-pong';
+  else if (isDouble) patternName = 'double-road';
+  else if (isRegular && colLens.length >= 4) patternName = 'regular';
+
+  // Road consensus: what do derived roads suggest for NEXT bet?
+  // If pattern is repeating → bet to continue current side
+  // If pattern is breaking → bet for switch
+  let roadsBet = null;
+  const currentSide = nt.at(-1); // last non-tie result
+  if (bebSignal === 'repeating' && srSignal === 'repeating') {
+    roadsBet = { bet: currentSide, strength: 'strong', reason: 'Big Eye Boy + Small Road both show RED — pattern repeating' };
+  } else if (bebSignal === 'breaking' && srSignal === 'breaking') {
+    roadsBet = { bet: currentSide === 'B' ? 'P' : 'B', strength: 'strong', reason: 'Big Eye Boy + Small Road both show BLUE — pattern breaking' };
+  } else if (bebSignal === 'repeating') {
+    roadsBet = { bet: currentSide, strength: 'moderate', reason: 'Big Eye Boy shows RED (repeating), Small Road is mixed' };
+  } else if (bebSignal === 'breaking') {
+    roadsBet = { bet: currentSide === 'B' ? 'P' : 'B', strength: 'moderate', reason: 'Big Eye Boy shows BLUE (breaking), Small Road is mixed' };
+  } else if (srSignal === 'repeating') {
+    roadsBet = { bet: currentSide, strength: 'moderate', reason: 'Small Road shows RED (repeating), Big Eye Boy is mixed' };
+  } else if (srSignal === 'breaking') {
+    roadsBet = { bet: currentSide === 'B' ? 'P' : 'B', strength: 'moderate', reason: 'Small Road shows BLUE (breaking), Big Eye Boy is mixed' };
+  }
+
+  return { streak, isChopping, isDouble, isRegular, patternName, bebSignal, srSignal, roadsBet, currentSide, nt, cols, bebRed, bebBlue, srRed, srBlue };
+}
+
+function updateInsight() {
+  const nt = g.history.filter(x => x !== 'T');
+  if (!nt.length) { g.insight = ''; g.prediction = ''; return; }
+  const p = analyzePatterns();
+
+  if (p.streak && p.streak.len >= 5) {
+    g.insight = `🐉 Dragon tail — ${p.streak.side==='B'?'Banker':'Player'} ${p.streak.len} in a row`;
+    g.prediction = `Roads lean ${p.streak.side==='B'?'Banker':'Player'} — superstition, not math`;
+  } else if (p.streak && p.streak.len >= 3) {
+    g.insight = `${p.streak.side==='B'?'🔴':'🔵'} ${p.streak.side==='B'?'Banker':'Player'} streak: ${p.streak.len} in a row`;
+    g.prediction = `Roads lean ${p.streak.side==='B'?'Banker':'Player'} — superstition, not math`;
+  } else if (p.isChopping) {
+    g.insight = `🔀 Ping-pong — alternating P/B pattern`;
+    g.prediction = `Roads lean ${p.currentSide==='B'?'Player':'Banker'} — superstition, not math`;
+  } else if (p.isDouble) {
+    g.insight = `✌️ Double road — pairs switching sides`;
+    g.prediction = `Roads lean ${p.currentSide} continues — superstition, not math`;
+  } else if (p.roadsBet) {
+    g.insight = `${p.roadsBet.strength === 'strong' ? '📊' : '〰️'} Roads signal: ${p.roadsBet.reason}`;
+    g.prediction = `Roads lean ${p.roadsBet.bet==='B'?'Banker':'Player'} — superstition, not math`;
   } else {
     g.insight = `No strong pattern detected`;
     g.prediction = `Roads lean Unclear — superstition, not math`;
@@ -190,212 +260,278 @@ function updateInsight() {
 
 // ── Coach: pre-bet guidance ───────────────────────────────────────────────────
 function getCoachTip() {
-  const nt = g.history.filter(x => x !== 'T');
   const total = g.history.length;
 
+  // ── First 3 hands: learn the basics ──────────────────────────────────────
   if (total === 0) {
     return {
       headline: '👋 Welcome — let\'s learn Baccarat',
       lines: [
         'Pick a side to bet on: Player, Banker, or Tie.',
-        'The goal is simple: guess which hand gets closer to 9.',
-        '💡 Start tip: Banker has the lowest house edge (~1.06%).',
-        'That means you lose less over time betting Banker.',
+        'The goal: guess which hand gets closer to 9.',
+        '💡 Banker has the lowest house edge (~1.06%). Best bet mathematically.',
       ],
       question: null,
     };
   }
-
   if (total === 1) {
     return {
-      headline: '📖 How scoring works',
+      headline: '📖 Scoring: only the last digit counts',
       lines: [
         'Cards 2–9 = face value. Aces = 1. 10/J/Q/K = 0.',
-        'Only the last digit of the total counts.',
-        'Example: 7 + 8 = 15 → score is 5.',
-        'Example: 6 + 4 = 10 → score is 0.',
+        '7 + 8 = 15 → score is 5.   6 + 4 = 10 → score is 0.',
       ],
       question: {
-        text: 'Quick check: what does a King + 6 score?',
+        text: 'King + 6 = ?',
         choices: [
-          { text: '16', correct: false, fb: 'Not quite — King = 0, so 0+6 = 6.' },
-          { text: '6',  correct: true,  fb: '✅ Correct! King = 0, so the score is 6.' },
-          { text: '0',  correct: false, fb: 'Almost — King = 0, but the 6 still counts.' },
+          { text: '16', correct: false, fb: 'King = 0, not 10. So 0 + 6 = 6.' },
+          { text: '6',  correct: true,  fb: '✅ King = 0, so the score is 6.' },
+          { text: '0',  correct: false, fb: 'King = 0, but the 6 still counts. Score = 6.' },
         ],
       },
     };
   }
-
   if (total === 2) {
     return {
-      headline: '🃏 The 3rd card rules',
+      headline: '🏦 Why Banker pays 0.95:1 (5% commission)',
       lines: [
-        'Player draws a 3rd card if their total is 0–5.',
-        'Player stands (no draw) if total is 6 or 7.',
-        '8 or 9 = Natural — no more cards for either side.',
-        'Banker\'s rule is more complex — explained after the hand.',
-      ],
-      question: {
-        text: 'Player has a total of 4. What happens?',
-        choices: [
-          { text: 'Player draws a 3rd card',   correct: true,  fb: '✅ Right! 4 is ≤ 5, so Player always draws.' },
-          { text: 'Player stands',              correct: false, fb: 'Nope — Player stands on 6–7 only. 4 means draw.' },
-          { text: 'It depends on Banker\'s total', correct: false, fb: 'Player\'s draw rule is fixed — 0–5 draws, 6–7 stands. Banker\'s total doesn\'t affect it.' },
-        ],
-      },
-    };
-  }
-
-  if (total === 3) {
-    return {
-      headline: '🏦 Why Banker pays less (5% commission)',
-      lines: [
-        'Banker wins slightly more often than Player (~50.7% vs ~49.3%).',
-        'To keep the casino profitable, Banker pays 0.95:1, not 1:1.',
-        'That 5% commission is tracked and collected at the table.',
+        'Banker wins ~50.7% of non-tie hands vs Player ~49.3%.',
+        'To compensate, Banker pays 0.95:1 — $5 commission per $100 won.',
         'Even with commission, Banker is still the best math bet.',
       ],
       question: {
-        text: 'You bet $100 on Banker and win. How much profit do you get?',
+        text: 'You bet $100 on Banker and win. Profit = ?',
         choices: [
-          { text: '$100', correct: false, fb: 'That would be 1:1. Banker pays 0.95:1 due to the 5% commission.' },
-          { text: '$95',  correct: true,  fb: '✅ Correct! 5% commission = $5, so profit = $95.' },
-          { text: '$80',  correct: false, fb: 'Not quite — commission is 5%, not 20%. Profit = $95 on a $100 bet.' },
+          { text: '$100', correct: false, fb: 'That\'s 1:1. Banker pays 0.95:1 — 5% commission applies.' },
+          { text: '$95',  correct: true,  fb: '✅ $100 × 0.95 = $95 profit. Commission = $5, tracked separately.' },
+          { text: '$80',  correct: false, fb: 'Commission is 5%, not 20%. $100 bet → $95 profit.' },
         ],
       },
     };
   }
-
-  // Pattern-based coaching after 4+ hands
-  let bStr = 0, pStr = 0;
-  for (let i = nt.length-1; i >= 0 && nt[i]==='B'; i--) bStr++;
-  for (let i = nt.length-1; i >= 0 && nt[i]==='P'; i--) pStr++;
-  let isChopping = nt.length >= 4;
-  for (let i = 1; i < Math.min(nt.length,6); i++)
-    if (nt[nt.length-i] === nt[nt.length-i-1]) { isChopping = false; break; }
-
-  if (bStr >= 4) {
+  if (total === 3) {
     return {
-      headline: `🔴 Banker streak: ${bStr} in a row`,
+      headline: '📊 Reading the Big Road — the main scoreboard',
       lines: [
-        `Banker has won ${bStr} hands straight — that's a notable streak.`,
-        'Casino players call this "riding the shoe" and keep betting Banker.',
-        'The roads (right panel) are filling up with red dots.',
-        '⚠️ Math reality: each hand is independent. The streak doesn\'t predict the next result.',
+        'Big Road (top right) tracks WHO wins each hand visually.',
+        '🔴 Red dot = Banker win.  🔵 Blue dot = Player win.',
+        'Same side wins again → dot goes DOWN in same column.',
+        'Other side wins → new column starts to the RIGHT.',
+        'Example: B-B-B-P = 3 red dots in column 1, then blue dot in column 2.',
       ],
       question: {
-        text: `Banker has won ${bStr} in a row. What does the math say about the next hand?`,
+        text: 'Big Road: Banker wins 3 in a row, then Player wins. How does that look?',
         choices: [
-          { text: 'Banker is likely to win again',  correct: false, fb: 'This feels right but isn\'t — each hand is independent. Streaks don\'t predict future hands.' },
-          { text: 'Player is "due" to win soon',    correct: false, fb: 'This is the Gambler\'s Fallacy. Past results don\'t change future probabilities.' },
-          { text: 'Each hand has the same odds, streak or not', correct: true, fb: '✅ Exactly right. Banker still wins ~50.7% of non-tie hands, regardless of what came before.' },
+          { text: '3 red dots in one column, then blue dot starts new column', correct: true,  fb: '✅ Exactly. Streak = go down. Switch = new column to the right.' },
+          { text: '3 red dots, then a blue dot added to the same column',      correct: false, fb: 'No — when the side changes, a new column starts. Same side = same column.' },
+          { text: 'Each win gets its own column',                               correct: false, fb: 'Only the first win in a streak starts a new column. Continuing wins stack downward.' },
         ],
       },
     };
   }
-
-  if (pStr >= 4) {
+  if (total === 4) {
     return {
-      headline: `🔵 Player streak: ${pStr} in a row`,
+      headline: '🐉 Pattern: The Dragon Tail',
       lines: [
-        `Player has won ${pStr} straight — casino players notice this.`,
-        'Some players chase the streak; others bet against it.',
-        '⚠️ Math reality: Player has ~49.3% win rate on non-tie hands. Odds don\'t change.',
-        'Banker still has better odds than Player even during a Player streak.',
+        'A Dragon Tail = one side winning 5+ hands in a row.',
+        'In the Big Road it looks like a long column going straight down.',
+        'Casino strategy: "ride the dragon" — keep betting the winning side.',
+        'Reality check: each hand is still ~50/50. The streak doesn\'t guarantee continuation.',
+        'But casino players bet with streaks because it feels like momentum.',
       ],
       question: {
-        text: 'During a Player streak, what\'s the smartest bet?',
+        text: 'Banker has won 6 in a row — a Dragon Tail. What do most casino players do?',
         choices: [
-          { text: 'Tie — it\'s overdue',    correct: false, fb: 'Tie has a ~14.4% house edge. It\'s the worst bet at the table, streak or not.' },
-          { text: 'Player — ride the streak', correct: false, fb: 'Mathematically, Banker is still slightly better. Streaks don\'t change the house edge.' },
-          { text: 'Banker — best house edge', correct: true,  fb: '✅ Correct. Banker has ~1.06% house edge vs Player\'s ~1.24%. Best bet regardless of streaks.' },
+          { text: 'Bet Player — it\'s "due" to win', correct: false, fb: 'This is the Gambler\'s Fallacy. Past results don\'t change future odds. Player isn\'t "due."' },
+          { text: 'Bet Banker — ride the dragon',    correct: true,  fb: '✅ Casino players "ride the shoe." They bet the streak continues, knowing it\'s not guaranteed.' },
+          { text: 'Bet Tie — the streak must end',   correct: false, fb: 'Tie has 14.4% house edge. Never the right bet, especially based on streak prediction.' },
         ],
       },
     };
   }
-
-  if (isChopping) {
-    return {
-      headline: '🔀 Chopping pattern detected',
-      lines: [
-        'The results are alternating: P-B-P-B or B-P-B-P.',
-        'Casino players call this "chopping" and bet the switch.',
-        'On a chop, you\'d bet the opposite of last result.',
-        '⚠️ Math reality: it\'s still random. Chops break without warning.',
-      ],
-      question: {
-        text: 'What do casino players call an alternating P-B-P-B pattern?',
-        choices: [
-          { text: 'A dragon tail',   correct: false, fb: 'Dragon tail is a long single-side streak. This alternating pattern is called "chopping."' },
-          { text: 'Chopping',        correct: true,  fb: '✅ Right! Alternating results are called "chopping the shoe" — a classic baccarat pattern.' },
-          { text: 'A natural run',   correct: false, fb: 'Natural refers to 8 or 9 starting totals. Alternating results are called "chopping."' },
-        ],
-      },
-    };
-  }
-
-  // Road explanation coaching
   if (total === 5) {
     return {
-      headline: '📊 Reading the Big Road',
+      headline: '🔀 Pattern: Ping-Pong (Chopping)',
       lines: [
-        'The Big Road (right panel) tracks streaks visually.',
-        'Same side winning → dots go DOWN in the same column.',
-        'Side switches → new column starts.',
-        'Red dots = Banker wins. Blue dots = Player wins.',
+        'Ping-Pong = results alternating: B-P-B-P-B-P.',
+        'In the Big Road: each column is only 1 dot tall, switching every hand.',
+        'Casino strategy: "bet the chop" — always bet opposite of last result.',
+        'If last was Banker → bet Player. If last was Player → bet Banker.',
+        'When a chop breaks (same side twice), chop bettors adjust.',
       ],
       question: {
-        text: 'In the Big Road, a new column starts when:',
+        text: 'You\'re in a ping-pong pattern. Last hand was Banker. What do chop players bet?',
         choices: [
-          { text: 'A Tie happens',            correct: false, fb: 'Ties don\'t start a new column — they\'re marked with a line on the current dot.' },
-          { text: 'The other side wins',      correct: true,  fb: '✅ Correct! Same side = go down. Different side = new column to the right.' },
-          { text: 'More than 3 in a row',     correct: false, fb: 'A new column happens on ANY switch, even after just 1 win.' },
+          { text: 'Banker again',                   correct: false, fb: 'Chop strategy bets the SWITCH. Last was Banker → bet Player to continue the alternation.' },
+          { text: 'Player — bet the switch',        correct: true,  fb: '✅ Correct. Chop strategy always bets the opposite of the last result, expecting alternation to continue.' },
+          { text: 'Tie — neither side has an edge', correct: false, fb: 'Tie has a 14.4% house edge — always the wrong bet. Chop players bet Player here.' },
         ],
       },
     };
   }
-
+  if (total === 6) {
+    return {
+      headline: '✌️ Pattern: The Double Road',
+      lines: [
+        'Double Road = results come in pairs: BB-PP-BB-PP.',
+        'Big Road looks like columns of exactly 2 dots, alternating red/blue.',
+        'Casino strategy: within a pair, bet same side. After 2, bet switch.',
+        'Example: saw BB → bet B (complete the pair). After BB → bet P for next pair.',
+        'Double road is one of the most common patterns casino players look for.',
+      ],
+      question: {
+        text: 'Double road pattern: you\'ve seen BB-PP-BB. What do double-road players bet next?',
+        choices: [
+          { text: 'Banker — start a new BB pair',   correct: false, fb: 'The last pair was BB, so the double road would predict a PP pair next. Bet Player.' },
+          { text: 'Player — expect a PP pair next', correct: true,  fb: '✅ Right! BB-PP-BB pattern → next pair should be PP. Bet Player to start the new pair.' },
+          { text: 'Banker — ride the last streak',  correct: false, fb: 'The double road looks at pairs, not streaks. BB ended → expect PP → bet Player.' },
+        ],
+      },
+    };
+  }
+  if (total === 7) {
+    return {
+      headline: '👁 Big Eye Boy — is the pattern repeating?',
+      lines: [
+        'Big Eye Boy (middle right) doesn\'t track WHO wins.',
+        'It asks: is the BIG ROAD column structure repeating?',
+        '🔴 Red dot = yes, structure matches 2 columns ago → pattern continuing.',
+        '🔵 Blue dot = no, structure changed → pattern breaking.',
+        'If Big Eye Boy is mostly red → bet to CONTINUE current pattern.',
+        'If Big Eye Boy turns blue → expect the pattern to BREAK.',
+      ],
+      question: {
+        text: 'Big Eye Boy just showed 4 red dots in a row. What does that mean?',
+        choices: [
+          { text: 'Banker won 4 times',                        correct: false, fb: 'Big Eye Boy isn\'t about who won — it compares column lengths. Red = structure repeating.' },
+          { text: 'The road pattern is repeating — bet to continue', correct: true, fb: '✅ Right! 4 reds = strong repeating signal. Casino players bet to continue the current pattern.' },
+          { text: 'The shoe is about to reshuffle',            correct: false, fb: 'Reshuffle happens at <15 cards, unrelated to road dots. Red = repeating column structure.' },
+        ],
+      },
+    };
+  }
   if (total === 8) {
     return {
-      headline: '👁 Big Eye Boy & Small Road',
+      headline: '📉 Small Road — one column further back',
       lines: [
-        'These two smaller roads compare current column to older ones.',
-        'Red dot = pattern is REPEATING (same structure as before).',
-        'Blue dot = pattern is BREAKING (structure changed).',
-        'Casinos show these to make patterns feel predictable — they\'re not.',
+        'Small Road does the same as Big Eye Boy, but compares 3 columns back.',
+        '🔴 Red = current structure matches 3 columns ago.',
+        '🔵 Blue = structure doesn\'t match → different pattern than before.',
+        'When Big Eye Boy AND Small Road are both red → strong repeating signal.',
+        'When both are blue → strong break signal. Mixed → no clear read.',
       ],
       question: {
-        text: 'A red dot in Big Eye Boy means:',
+        text: 'Big Eye Boy is red, Small Road is also red. Combined signal?',
         choices: [
-          { text: 'Banker won the last hand',              correct: false, fb: 'Red in Big Eye Boy isn\'t about who won — it\'s about whether the column structure is repeating.' },
-          { text: 'The column pattern is repeating',       correct: true,  fb: '✅ Right! Red = repeating structure. Blue = new/different structure. It compares 2 columns back.' },
-          { text: 'A streak of 3 or more is happening',   correct: false, fb: 'Big Eye Boy isn\'t a streak counter — it compares column lengths to detect repetition.' },
+          { text: 'Unclear — they cancel each other out',             correct: false, fb: 'They don\'t cancel — they agree! Both red means the pattern is repeating strongly.' },
+          { text: 'Strong repeating signal — bet to continue pattern', correct: true, fb: '✅ Both roads red = the strongest repeating signal in baccarat road reading.' },
+          { text: 'Bet Tie — two reds means neither side dominates',   correct: false, fb: 'Red has nothing to do with ties. It means the column structure is repeating. Both red = continue.' },
         ],
       },
     };
   }
 
-  // Default tip for later hands
-  const lastFive = nt.slice(-5).join('');
-  const bCount = (lastFive.match(/B/g)||[]).length;
-  const pCount = (lastFive.match(/P/g)||[]).length;
-  return {
-    headline: '🧮 Last 5 non-tie hands',
-    lines: [
-      `Banker: ${bCount} wins   Player: ${pCount} wins`,
-      `Full history (last 10): ${g.history.join(' ')}`,
-      'No pattern guarantees anything — but knowing what to look for helps.',
-      '💡 Reminder: Banker has the lowest house edge. Best long-term bet.',
-    ],
-    question: {
-      text: 'Which bet has the lowest house edge in Baccarat?',
+  // ── After 9+ hands: live pattern coaching ────────────────────────────────
+  const p = analyzePatterns();
+  const nt = p.nt;
+  return buildLivePatternCoach(p, nt);
+}
+
+function buildLivePatternCoach(p, nt) {
+  const sideName = s => s === 'B' ? 'Banker' : s === 'P' ? 'Player' : '?';
+  const lines = [];
+  let headline = '📊 Live road reading';
+  let question = null;
+
+  // ── Big Road summary ────────────────────────────────────────────────────
+  const cols = p.cols;
+  const currentCol = cols.at(-1) || [];
+  const colDepth = currentCol.length;
+  const numCols = cols.length;
+  lines.push(`Big Road: ${numCols} column${numCols!==1?'s':''}, current column ${colDepth} deep (${sideName(p.currentSide)})`);
+
+  // ── Named pattern ───────────────────────────────────────────────────────
+  if (p.patternName === 'dragon') {
+    headline = `🐉 Dragon Tail — ${sideName(p.streak.side)} ${p.streak.len} in a row`;
+    lines.push(`One column is ${p.streak.len} dots deep — that's a dragon tail.`);
+    lines.push(`Casino strategy: ride it. Keep betting ${sideName(p.streak.side)}.`);
+    lines.push(`⚠️ Each hand is still ~50/50. Dragons end without warning.`);
+  } else if (p.patternName === 'streak') {
+    headline = `${p.streak.side==='B'?'🔴':'🔵'} Streak — ${sideName(p.streak.side)} ${p.streak.len} in a row`;
+    lines.push(`Current column has ${p.streak.len} dots. Casino players ride streaks.`);
+    lines.push(`Strategy: bet ${sideName(p.streak.side)} until it breaks.`);
+  } else if (p.patternName === 'ping-pong') {
+    headline = '🔀 Ping-Pong (Chopping)';
+    lines.push('Results are alternating — columns are 1 dot wide.');
+    lines.push(`Last result: ${sideName(p.currentSide)}. Chop strategy bets: ${sideName(p.currentSide==='B'?'P':'B')}.`);
+  } else if (p.patternName === 'double-road') {
+    headline = '✌️ Double Road — pairs switching';
+    lines.push('Columns are 2 dots deep and alternating sides.');
+    lines.push(`Current pair is ${sideName(p.currentSide)}. If it completes → next pair = ${sideName(p.currentSide==='B'?'P':'B')}.`);
+  } else {
+    lines.push('No dominant pattern yet — shoe is irregular.');
+  }
+
+  // ── Big Eye Boy reading ─────────────────────────────────────────────────
+  if (g.bigEyeBoy.length >= 3) {
+    const bebLast = g.bigEyeBoy.slice(-4);
+    const bebDesc = bebLast.map(x => x==='R'?'🔴':'🔵').join(' ');
+    if (p.bebSignal === 'repeating') {
+      lines.push(`Big Eye Boy: ${bebDesc} → mostly RED = pattern repeating. Bet to continue.`);
+    } else if (p.bebSignal === 'breaking') {
+      lines.push(`Big Eye Boy: ${bebDesc} → mostly BLUE = pattern breaking. Bet the switch.`);
+    } else {
+      lines.push(`Big Eye Boy: ${bebDesc} → mixed signal, no clear read.`);
+    }
+  }
+
+  // ── Small Road reading ──────────────────────────────────────────────────
+  if (g.smallRoad.length >= 3) {
+    const srLast = g.smallRoad.slice(-4);
+    const srDesc = srLast.map(x => x==='R'?'🔴':'🔵').join(' ');
+    if (p.srSignal === 'repeating') {
+      lines.push(`Small Road: ${srDesc} → mostly RED = confirms continuation.`);
+    } else if (p.srSignal === 'breaking') {
+      lines.push(`Small Road: ${srDesc} → mostly BLUE = confirms break.`);
+    } else {
+      lines.push(`Small Road: ${srDesc} → mixed.`);
+    }
+  }
+
+  // ── Roads consensus bet ─────────────────────────────────────────────────
+  if (p.roadsBet) {
+    const betName = sideName(p.roadsBet.bet);
+    const strength = p.roadsBet.strength === 'strong' ? 'Strong' : 'Moderate';
+    lines.push(`─`);
+    lines.push(`${strength} roads signal → ${betName}`);
+    lines.push(`⚠️ Roads are pattern-based, not math. Banker still has best odds.`);
+
+    question = {
+      text: `Roads signal ${betName}. What's the mathematically safest bet?`,
       choices: [
-        { text: 'Tie (~14.4% edge)',     correct: false, fb: 'Tie is the worst bet at the table. The 8:1 payout isn\'t worth the terrible odds.' },
-        { text: 'Player (~1.24% edge)',  correct: false, fb: 'Player is decent but Banker is slightly better due to the win rate, even with the commission.' },
-        { text: 'Banker (~1.06% edge)',  correct: true,  fb: '✅ Correct. Banker is always the best mathematical bet. Bet it every time if you want to minimize losses.' },
+        { text: `${betName} — follow the roads`,     correct: p.roadsBet.bet === 'B', fb: p.roadsBet.bet === 'B' ? '✅ Roads AND math agree — Banker is best.' : `Roads say ${betName}, but math always says Banker (~1.06% edge). Roads are superstition.` },
+        { text: `Banker — best edge regardless`,     correct: p.roadsBet.bet !== 'B', fb: p.roadsBet.bet !== 'B' ? '✅ Even when roads say Player, Banker has better odds mathematically.' : '✅ Roads and math agree here — Banker is best bet.' },
+        { text: 'Tie — both roads are unreliable',  correct: false, fb: 'Tie has a 14.4% house edge. Never the right choice.' },
       ],
-    },
-  };
+    };
+  } else {
+    // general quiz to keep engagement
+    const lastFive = nt.slice(-5).join('-');
+    lines.push(`─`);
+    lines.push(`Last 5: ${lastFive || '—'}`);
+    lines.push(`💡 Banker: ~1.06% edge  |  Player: ~1.24%  |  Tie: ~14.4%`);
+
+    question = {
+      text: 'No clear road signal. Which bet minimizes your losses long-term?',
+      choices: [
+        { text: 'Banker — lowest house edge',  correct: true,  fb: '✅ Always Banker when in doubt. ~1.06% is the best edge you can get in Baccarat.' },
+        { text: 'Player — no commission',      correct: false, fb: 'Player\'s 1.24% edge is worse than Banker\'s 1.06%, even accounting for the commission.' },
+        { text: 'Tie — 8:1 payout is worth it', correct: false, fb: 'Tie pays 8:1 but wins so rarely that the house edge is 14.4% — by far the worst bet.' },
+      ],
+    };
+  }
+
+  return { headline, lines, question };
 }
 
 // ── Quiz generation: post-hand ────────────────────────────────────────────────
@@ -589,15 +725,54 @@ function renderPostHandLesson(explain, quiz) {
   div.innerHTML = '';
 
   // What happened summary
-  const title = el('p', 'coach-headline', '📋 What just happened');
-  div.appendChild(title);
+  div.appendChild(el('p', 'coach-headline', '📋 What just happened'));
   for (const { cls, text } of explain) {
     div.appendChild(el('p', cls || 'coach-line', text));
   }
 
+  // Road update (if enough history)
+  if (g.history.length >= 2) {
+    div.appendChild(el('hr', 'quiz-sep'));
+    div.appendChild(el('p', 'coach-headline', '📊 Roads updated'));
+    const p = analyzePatterns();
+    const sideName = s => s === 'B' ? 'Banker' : 'Player';
+
+    // Big Road
+    const cols = p.cols;
+    const colDepth = (cols.at(-1) || []).length;
+    if (p.patternName === 'dragon') {
+      div.appendChild(el('p', 'coach-line le-natural', `🐉 Dragon Tail! ${sideName(p.streak.side)} streak: ${p.streak.len} in a row. Big Road column is ${colDepth} deep.`));
+    } else if (p.patternName === 'streak') {
+      div.appendChild(el('p', 'coach-line le-draw', `Streak: ${sideName(p.streak.side)} ${p.streak.len} straight. Column depth: ${colDepth}.`));
+    } else if (p.patternName === 'ping-pong') {
+      div.appendChild(el('p', 'coach-line le-draw', `🔀 Ping-Pong pattern holding. Each column is 1 dot wide — sides alternating.`));
+    } else if (p.patternName === 'double-road') {
+      div.appendChild(el('p', 'coach-line le-draw', `✌️ Double Road forming — columns are 2 deep, alternating sides.`));
+    } else {
+      div.appendChild(el('p', 'coach-line le-stand', `Big Road: ${cols.length} columns. No dominant pattern yet.`));
+    }
+
+    // Big Eye Boy
+    if (g.bigEyeBoy.length >= 2) {
+      const last = g.bigEyeBoy.at(-1);
+      const desc = last === 'R'
+        ? '🔴 Red — column structure matches 2 back → pattern continuing'
+        : '🔵 Blue — column structure changed → pattern breaking';
+      div.appendChild(el('p', 'coach-line', `Big Eye Boy: ${desc}`));
+    }
+
+    // Small Road
+    if (g.smallRoad.length >= 2) {
+      const last = g.smallRoad.at(-1);
+      const desc = last === 'R'
+        ? '🔴 Red — matches 3 columns back → confirms continuation'
+        : '🔵 Blue — differs from 3 back → confirms break';
+      div.appendChild(el('p', 'coach-line', `Small Road: ${desc}`));
+    }
+  }
+
   if (quiz) {
-    const sep = el('hr', 'quiz-sep');
-    div.appendChild(sep);
+    div.appendChild(el('hr', 'quiz-sep'));
     renderQuiz(quiz, div);
   }
 }
