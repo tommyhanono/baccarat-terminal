@@ -1,132 +1,11 @@
 'use strict';
 
-// ── xterm setup ───────────────────────────────────────────────────────────────
-const term = new Terminal({
-  cursorBlink: true,
-  cursorStyle: 'block',
-  fontSize: 14,
-  fontFamily: '"Cascadia Code", "Fira Code", Menlo, "Courier New", monospace',
-  theme: {
-    background:    '#0d0d0d',
-    foreground:    '#e0e0e0',
-    cursor:        '#f0f0f0',
-    black:         '#000000',
-    red:           '#e06c75',
-    green:         '#98c379',
-    yellow:        '#e5c07b',
-    blue:          '#61afef',
-    magenta:       '#c678dd',
-    cyan:          '#56b6c2',
-    white:         '#abb2bf',
-    brightBlack:   '#5c6370',
-    brightRed:     '#e06c75',
-    brightGreen:   '#98c379',
-    brightYellow:  '#e5c07b',
-    brightBlue:    '#61afef',
-    brightMagenta: '#c678dd',
-    brightCyan:    '#56b6c2',
-    brightWhite:   '#ffffff',
-  },
-});
-
-const fitAddon = new FitAddon.FitAddon();
-term.loadAddon(fitAddon);
-term.open(document.getElementById('terminal'));
-
-function doFit() {
-  fitAddon.fit();
-}
-
-// Fit on load — requestAnimationFrame ensures the DOM has real pixel dimensions
-window.addEventListener('load', () => {
-  requestAnimationFrame(() => {
-    doFit();
-    startGame();
-  });
-});
-
-window.addEventListener('resize', () => {
-  doFit();
-});
-
-// ── I/O layer ─────────────────────────────────────────────────────────────────
-const out  = s  => term.write(s);
-const TW   = () => term.cols  || 120;
-const TH   = () => term.rows  || 40;
-const go   = (r, c) => out(`\x1b[${r};${c}H`);
-const clr  = () => out('\x1b[2J\x1b[H');
-
-let keyQueue  = [];
-let lineState = null;
-let lineMode  = false;
-
-term.onData(data => {
-  if (lineMode && lineState) {
-    if (data === '\r' || data === '\n') {
-      out('\r\n');
-      const ans = lineState.buf;
-      lineState.resolve(ans.trim());
-      lineState = null;
-      lineMode  = false;
-    } else if (data === '\x7f' || data === '\x08') {
-      if (lineState.buf.length > 0) {
-        lineState.buf = lineState.buf.slice(0, -1);
-        out('\b \b');
-      }
-    } else if (data.charCodeAt(0) >= 32) {
-      lineState.buf += data;
-      out(data);
-    }
-  } else {
-    if (keyQueue.length > 0) keyQueue.shift()(data);
-  }
-});
-
-function getKey()        { return new Promise(r => keyQueue.push(r)); }
-function getLine(prompt) {
-  return new Promise(resolve => {
-    out(prompt);
-    lineMode  = true;
-    lineState = { buf: '', resolve };
-  });
-}
-
-// ── ANSI helpers ──────────────────────────────────────────────────────────────
-const R    = '\x1b[0m';
-const col  = (code, s) => `\x1b[${code}m${s}${R}`;
-const red  = s => col(31, s);
-const grn  = s => col(32, s);
-const yel  = s => col(33, s);
-const blu  = s => col(34, s);
-const dim  = s => col(2,  s);
-const bold = s => col(1,  s);
-const LW   = () => Math.floor(TW() * 0.6);
-const SC   = () => LW() + 1;
-const RS   = () => SC() + 1;
-const RW   = () => TW() - SC() - 1;
-const stripA = s => s.replace(/\x1b\[[0-9;]*[mH]/g, '');
-const visLen = s => stripA(s).length;
-
-// ── Cards ─────────────────────────────────────────────────────────────────────
-const SUITS   = ['♠','♥','♦','♣'];
-const RANKS   = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-const cardVal = r => r === 'A' ? 1 : ['10','J','Q','K'].includes(r) ? 0 : +r;
-const handTot = h => h.reduce((s, c) => s + cardVal(c.rank), 0) % 10;
-const isRedS  = s => s === '♥' || s === '♦';
-
-function cardArt(c, faceDown) {
-  if (faceDown) return ['┌─────┐','│░░░░░│','│░░░░░│','│░░░░░│','└─────┘'];
-  const cc = isRedS(c.suit) ? '\x1b[31m' : '';
-  const rL = c.rank.length === 1 ? c.rank + ' ' : c.rank;
-  const rR = c.rank.length === 1 ? ' ' + c.rank : c.rank;
-  return [
-    '┌─────┐',
-    `│${cc}${rL}   ${R}│`,
-    `│  ${cc}${c.suit}  ${R}│`,
-    `│   ${cc}${rR}${R}│`,
-    '└─────┘',
-  ];
-}
+// ── Card system ───────────────────────────────────────────────────────────────
+const SUITS = ['♠','♥','♦','♣'];
+const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const cardVal  = r => r === 'A' ? 1 : ['10','J','Q','K'].includes(r) ? 0 : +r;
+const handTot  = h => h.reduce((s, c) => s + cardVal(c.rank), 0) % 10;
+const isRedS   = s => s === '♥' || s === '♦';
 
 function buildShoe() {
   const s = [];
@@ -151,22 +30,16 @@ const g = {
   player: [],
   banker: [],
   outcome: null,
-  winner: null,
   history: [],
-  lessons: true,
   bigRoad: [],
   bigEyeBoy: [],
   smallRoad: [],
   insight: '',
   prediction: '',
-  lessonLines: [
-    'Welcome! Place your first bet to start.',
-    'Bet on Player, Banker, or Tie.',
-    'Banker has the lowest house edge (~1.06%).',
-    'Press ? for the full rule sheet.',
-  ],
   stats: { rounds:0, wins:0, losses:0, ties:0, bigWin:0, bigLoss:0, netPnL:0 },
 };
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function dealCard() {
   if (g.shoe.length < 15) g.shoe = buildShoe();
@@ -178,8 +51,7 @@ function bankerDecision(bt, playerDrew, p3v) {
   if (bt <= 2) return { draws: true,  why: `Banker ${bt} (0–2): always draws.` };
   if (bt === 3) {
     if (!playerDrew) return { draws: true, why: 'Banker 3, Player stood: draws.' };
-    return { draws: p3v !== 8,
-      why: `Banker 3: ${p3v !== 8 ? 'draws' : 'stands'} (P3=${p3v}${p3v !== 8 ? ', ≠8' : '=8'}).` };
+    return { draws: p3v !== 8, why: `Banker 3: ${p3v !== 8 ? 'draws' : 'stands'} (P3=${p3v}${p3v !== 8 ? ', ≠8' : '=8'}).` };
   }
   if (bt === 4) {
     if (!playerDrew) return { draws: false, why: 'Banker 4, Player stood: stands.' };
@@ -196,24 +68,23 @@ function bankerDecision(bt, playerDrew, p3v) {
     const d = p3v === 6 || p3v === 7;
     return { draws: d, why: `Banker 6: ${d?'draws':'stands'} (P3=${p3v}, need 6–7).` };
   }
-  return { draws: false, why: `Banker 7: stands.` };
+  return { draws: false, why: 'Banker 7: stands.' };
 }
 
-// ── Payout & stats ────────────────────────────────────────────────────────────
+// ── Payout ────────────────────────────────────────────────────────────────────
 function resolveResult(winner, explain) {
   const bet = g.bet, type = g.betType;
   let profit = 0;
-  g.winner = winner;
   if (winner === 'tie') {
     if (type === 'tie') {
       profit = bet * 8;
       g.balance += bet + profit;
       g.outcome = 'WIN';
-      explain.push(`Tie pays 8:1. Profit: +$${profit}.`);
+      explain.push({ cls: 'le-payout', text: `Tie pays 8:1 — profit: +$${profit}` });
     } else {
       g.balance += bet;
       g.outcome = 'PUSH';
-      explain.push(`Tie — ${type} bet returned (push). No win, no loss.`);
+      explain.push({ cls: 'le-payout', text: `Tie — ${type} bet returned (push)` });
     }
   } else if (winner === type) {
     if (type === 'banker') {
@@ -222,16 +93,16 @@ function resolveResult(winner, explain) {
       g.commission += comm;
       g.balance += bet + profit;
       g.outcome = 'WIN';
-      explain.push(`Banker pays 0.95:1. Profit: +$${profit.toFixed(2)} (comm $${comm.toFixed(2)} tracked).`);
+      explain.push({ cls: 'le-payout', text: `Banker pays 0.95:1 — profit: +$${profit.toFixed(2)} (comm $${comm.toFixed(2)} tracked)` });
     } else {
       profit = bet;
       g.balance += bet + profit;
       g.outcome = 'WIN';
-      explain.push(`Player pays 1:1. Profit: +$${profit}.`);
+      explain.push({ cls: 'le-payout', text: `Player pays 1:1 — profit: +$${profit}` });
     }
   } else {
     g.outcome = 'LOSS';
-    explain.push(`${type[0].toUpperCase()+type.slice(1)} lost. Loss: -$${bet}.`);
+    explain.push({ cls: 'le-payout', text: `${type[0].toUpperCase()+type.slice(1)} lost — -$${bet}` });
   }
   const h = winner === 'player' ? 'P' : winner === 'banker' ? 'B' : 'T';
   g.history.push(h);
@@ -267,11 +138,11 @@ function computeDerivedRoad(offset) {
       if (refCi < 0) continue;
       let isRed;
       if (ri === 0) {
-        const prevLen = cols[ci-1] ? cols[ci-1].length : 0;
-        const refPLen = refCi > 0 && cols[refCi-1] ? cols[refCi-1].length : 0;
-        isRed = prevLen === refPLen;
+        const pL = cols[ci-1]?.length ?? 0;
+        const rL = refCi > 0 ? (cols[refCi-1]?.length ?? 0) : 0;
+        isRed = pL === rL;
       } else {
-        isRed = ri < (cols[refCi] ? cols[refCi].length : 0);
+        isRed = ri < (cols[refCi]?.length ?? 0);
       }
       result.push(isRed ? 'R' : 'B');
       if (result.length >= 60) return result;
@@ -287,7 +158,7 @@ function updateDerivedRoads() {
 
 function updateInsight() {
   const nt = g.history.filter(x => x !== 'T');
-  if (!nt.length) { g.insight = 'No data yet.'; g.prediction = ''; return; }
+  if (!nt.length) { g.insight = ''; g.prediction = ''; return; }
   let bStr = 0, pStr = 0;
   for (let i = nt.length-1; i >= 0 && nt[i]==='B'; i--) bStr++;
   for (let i = nt.length-1; i >= 0 && nt[i]==='P'; i--) pStr++;
@@ -296,466 +167,305 @@ function updateInsight() {
     if (nt[nt.length-i] === nt[nt.length-i-1]) { alt = false; break; }
   let bebRed = 0;
   for (let i = g.bigEyeBoy.length-1; i >= 0 && g.bigEyeBoy[i]==='R'; i--) bebRed++;
+
   if (bStr >= 3) {
-    g.insight    = `\x1b[31m●\x1b[0m Banker streak: ${bStr} — players often ride this`;
-    g.prediction = `Roads lean: ${red('Banker')} — superstition, not math`;
+    g.insight = `🔴 Banker streak: ${bStr} — casino players often ride this`;
+    g.prediction = `Roads lean Banker — superstition, not math`;
   } else if (pStr >= 3) {
-    g.insight    = `\x1b[34m●\x1b[0m Player streak: ${pStr} — notable Player run`;
-    g.prediction = `Roads lean: ${blu('Player')} — superstition, not math`;
+    g.insight = `🔵 Player streak: ${pStr} — notable run for Player`;
+    g.prediction = `Roads lean Player — superstition, not math`;
   } else if (alt) {
-    const next = nt.at(-1) === 'B' ? blu('Player') : red('Banker');
-    g.insight    = `\x1b[34m●\x1b[0m Chopping pattern — some bet the chop`;
-    g.prediction = `Roads lean: ${next} — superstition, not math`;
+    g.insight = `🔵 Chopping pattern — some players bet the chop`;
+    g.prediction = `Roads lean ${nt.at(-1)==='B'?'Player':'Banker'} — superstition, not math`;
   } else if (bebRed >= 4) {
-    g.insight    = `Pattern repeating — Big Eye roads 'matching'`;
-    g.prediction = `Roads lean: ${yel('Unclear')} — superstition, not math`;
+    g.insight = `Pattern repeating — Big Eye roads matching`;
+    g.prediction = `Roads lean Unclear — superstition, not math`;
   } else {
-    g.insight    = `No strong pattern detected`;
-    g.prediction = `Roads lean: ${yel('Unclear')} — superstition, not math`;
+    g.insight = `No strong pattern detected`;
+    g.prediction = `Roads lean Unclear — superstition, not math`;
   }
 }
 
-// ── Drawing ───────────────────────────────────────────────────────────────────
-const TITLE = [
-  ' ██████╗  █████╗  ██████╗ ██████╗  █████╗ ██████╗  █████╗ ████████╗',
-  ' ██╔══██╗██╔══██╗██╔════╝██╔════╝ ██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝',
-  ' ██████╔╝███████║██║     ██║      ███████║██████╔╝███████║   ██║   ',
-  ' ██╔══██╗██╔══██║██║     ██║      ██╔══██║██╔══██╗██╔══██║   ██║   ',
-  ' ██████╔╝██║  ██║╚██████╗╚██████╗ ██║  ██║██║  ██║██║  ██║   ██║   ',
-  ' ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝  ',
-];
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
-function wAt(r, c, text) { go(r, c); out(text); }
+function renderCard(card, container, delay = 0) {
+  const div = el('div', `card ${isRedS(card.suit) ? 'red' : 'black'}`);
+  div.style.animationDelay = delay + 'ms';
+  div.appendChild(Object.assign(el('div','card-tl'), { textContent: card.rank }));
+  div.appendChild(Object.assign(el('div','card-suit'), { textContent: card.suit }));
+  div.appendChild(Object.assign(el('div','card-br'), { textContent: card.rank }));
+  container.appendChild(div);
+  return div;
+}
 
-function drawLeft() {
-  const lw = LW();
-  let r = 1;
-  for (const line of TITLE)
-    wAt(r++, 1, yel(bold(line.substring(0, lw))));
-  r++;
-  const commStr = g.commission > 0 ? red(`$${g.commission.toFixed(2)}`) : `$${g.commission.toFixed(2)}`;
-  wAt(r++, 1, bold('Balance: ') + grn(`$${g.balance.toFixed(2)}`) + '   ' + bold('Commission: ') + commStr);
-  if (g.bet > 0) {
-    const tc = g.betType === 'banker' ? red : g.betType === 'player' ? blu : grn;
-    wAt(r++, 1, bold('Bet: ') + yel(`$${g.bet}`) + ' on ' + tc(g.betType.toUpperCase()));
-  } else {
-    wAt(r++, 1, dim('Place your bet below'));
+function updateScores() {
+  $('player-score').textContent = g.player.length ? handTot(g.player) : '';
+  $('banker-score').textContent = g.banker.length ? handTot(g.banker) : '';
+}
+
+function updateBalance() {
+  $('balance').textContent = '$' + g.balance.toFixed(2);
+  $('commission').textContent = '$' + g.commission.toFixed(2);
+  $('current-bet-display').textContent = '$' + g.bet;
+}
+
+function updateHistory() {
+  const row = $('history-dots');
+  row.innerHTML = '';
+  for (const h of g.history) {
+    const d = el('div', `hdot hdot-${h}`, h);
+    row.appendChild(d);
   }
-  r++;
-  if (g.player.length > 0 || g.banker.length > 0) {
-    const pt = handTot(g.player), bt = handTot(g.banker);
-    wAt(r++, 1, blu(bold(`── PLAYER (${pt}) ─────────────────────────`)) +
-               '   ' + red(bold(`── BANKER (${bt}) ──────────────────────`)));
-    const pA = g.player.map(c => cardArt(c));
-    const bA = g.banker.map(c => cardArt(c));
-    for (let li = 0; li < 5; li++) {
-      let left = '';
-      for (const ca of pA) left += ca[li] + ' ';
-      const leftVis = visLen(left);
-      if (leftVis < 24) left += ' '.repeat(24 - leftVis);
-      let right = '';
-      for (const ca of bA) right += ca[li] + ' ';
-      wAt(r++, 1, left + '   ' + right);
+}
+
+function renderBigRoad() {
+  const grid = $('big-road');
+  grid.innerHTML = '';
+  const maxCols = 13, maxRows = 6;
+  const cells = [];
+  for (let r = 0; r < maxRows; r++) {
+    cells.push([]);
+    for (let c = 0; c < maxCols; c++) cells[r].push(null);
+  }
+  const start = Math.max(0, g.bigRoad.length - maxCols);
+  for (let ci = start; ci < g.bigRoad.length; ci++) {
+    const col = g.bigRoad[ci];
+    const gc  = ci - start;
+    for (let ri = 0; ri < Math.min(col.length, maxRows); ri++) {
+      cells[ri][gc] = col[ri];
     }
-    r++;
-    if (g.outcome) {
-      const [top, mid, bot] = g.outcome === 'WIN'
-        ? [grn(bold('  ╔══════════════╗')), grn(bold('  ║   🏆  WIN!   ║')), grn(bold('  ╚══════════════╝'))]
-        : g.outcome === 'LOSS'
-        ? [red(bold('  ╔══════════════╗')), red(bold('  ║   💸  LOSS   ║')), red(bold('  ╚══════════════╝'))]
-        : [yel(bold('  ╔══════════════╗')), yel(bold('  ║   🤝  PUSH   ║')), yel(bold('  ╚══════════════╝'))];
-      wAt(r++, 1, top); wAt(r++, 1, mid); wAt(r++, 1, bot);
-    } else r += 3;
-    r++;
-  } else r += 13;
-  const histStr = g.history.map(h =>
-    h==='P' ? blu('●P') : h==='B' ? red('●B') : grn('—T')).join(' ');
-  wAt(r++, 1, bold('Last 10: ') + (histStr || dim('—')));
-  r++;
-  wAt(r++, 1, dim('[L]essons  [S]tats  [R]oad guide  [?]rules  [Q]uit'));
-}
-
-function drawRight() {
-  const sc = RS(), rw = RW();
-  let r = 1;
-  if (!g.lessons) {
-    wAt(r++, sc, dim('[ LESSONS: OFF — press L to show ]'));
-    r++;
-  } else {
-    wAt(r++, sc, yel(bold('[ LESSON PANEL ]')));
-    wAt(r++, sc, '─'.repeat(Math.min(rw, 36)));
-    for (const line of g.lessonLines.slice(0, 5)) {
-      if (r > 14) break;
-      wAt(r++, sc, line.substring(0, rw + 10));
+  }
+  for (let r = 0; r < maxRows; r++) {
+    for (let c = 0; c < maxCols; c++) {
+      const cell = cells[r][c];
+      if (!cell) { grid.appendChild(el('div','rdot rdot-empty')); continue; }
+      const d = el('div', `rdot rdot-${cell.result}`);
+      if (cell.ties > 0) d.title = `+${cell.ties} tie(s)`;
+      grid.appendChild(d);
     }
-    r++;
-    wAt(r++, sc, bold('📖 Card values:'));
-    wAt(r++, sc, 'A=1  2-9=face  10/J/Q/K=0');
-    wAt(r++, sc, 'Total = (sum) mod 10');
-    r++;
-    wAt(r++, sc, bold('🃏 3rd Card:'));
-    wAt(r++, sc, blu('Player') + ': 0-5 draw  6-7 stand');
-    wAt(r++, sc, red('Banker') + ': 0-2 always draws');
-    wAt(r++, sc, '  3: draw unless P3=8');
-    wAt(r++, sc, '  4: draw if P3=2–7');
-    wAt(r++, sc, '  5: draw if P3=4–7');
-    wAt(r++, sc, '  6: draw if P3=6–7');
-    wAt(r++, sc, '  7: stands  8-9: Natural');
-    r++;
-    wAt(r++, sc, bold('💰 Payouts:'));
-    wAt(r++, sc, blu('Player') + '  1:1');
-    wAt(r++, sc, red('Banker') + '  0.95:1 (5% comm)');
-    wAt(r++, sc, grn('Tie')    + '     8:1');
-    r++;
   }
-  wAt(r++, sc, '─'.repeat(Math.min(rw, 36)));
-  wAt(r++, sc, bold('BIG ROAD') + dim(' — same=down, new=right'));
-  r = drawBigRoad(r, sc, rw);
-  r++;
-  wAt(r++, sc, bold('BIG EYE BOY') + dim(' — Red=repeating'));
-  r = drawCompact(r, sc, rw, g.bigEyeBoy);
-  r++;
-  wAt(r++, sc, bold('SMALL ROAD') + dim(' — col further back'));
-  r = drawCompact(r, sc, rw, g.smallRoad);
-  r++;
-  if (g.insight)    wAt(r++, sc, g.insight.substring(0, rw + 15));
-  if (g.prediction) wAt(r++, sc, g.prediction.substring(0, rw + 20));
 }
 
-function drawBigRoad(startRow, sc, rw) {
-  const maxCols = Math.min(20, Math.floor(rw / 3));
-  const start   = Math.max(0, g.bigRoad.length - maxCols);
-  let r = startRow;
-  for (let row = 0; row < 6; row++) {
-    let line = '';
-    for (let ci = start; ci < Math.min(g.bigRoad.length, start + maxCols); ci++) {
-      const col = g.bigRoad[ci];
-      if (row < col.length) {
-        const cell = col[row];
-        line += (cell.result === 'B' ? '\x1b[31m' : '\x1b[34m') + (cell.ties > 0 ? '⊗' : '●') + R + ' ';
-      } else line += '  ';
+function renderCompact(gridId, road) {
+  const grid = $(gridId);
+  grid.innerHTML = '';
+  const maxCols = 16, maxRows = 3;
+  const slice = road.slice(-(maxCols * maxRows));
+  for (let r = 0; r < maxRows; r++) {
+    for (let c = 0; c < maxCols; c++) {
+      const item = slice[r * maxCols + c];
+      if (!item) { grid.appendChild(el('div','rdot rdot-empty')); continue; }
+      grid.appendChild(el('div', `rdot rdot-derived-${item}`));
     }
-    wAt(r++, sc, line);
   }
-  return r;
 }
 
-function drawCompact(startRow, sc, rw, road) {
-  const maxCols = Math.min(20, Math.floor(rw / 2));
-  const slice   = road.slice(-maxCols * 3);
-  let r = startRow;
-  for (let row = 0; row < 3; row++) {
-    let line = '';
-    for (let col = 0; col < maxCols; col++) {
-      const item = slice[row * maxCols + col];
-      if (!item) line += '  ';
-      else line += (item === 'R' ? '\x1b[31m' : '\x1b[34m') + '● ' + R;
-    }
-    wAt(r++, sc, line);
+function updateRoads() {
+  renderBigRoad();
+  renderCompact('big-eye-boy', g.bigEyeBoy);
+  renderCompact('small-road', g.smallRoad);
+  $('insight-text').textContent    = g.insight    || '';
+  $('prediction-text').textContent = g.prediction || '';
+  $('insight-box').style.display   = g.insight ? '' : 'none';
+}
+
+function setLessonLines(lines) {
+  const div = $('lesson-dynamic');
+  div.innerHTML = '';
+  for (const { cls, text } of lines) {
+    const p = el('p', cls, text);
+    div.appendChild(p);
   }
-  return r;
 }
 
-function drawSep() {
-  const sc = SC();
-  for (let r = 1; r <= TH(); r++) { go(r, sc); out(dim('│')); }
+function showPhase(name) {
+  ['phase-bet','phase-deal','phase-result'].forEach(id => {
+    $(id).classList.toggle('hidden', id !== name);
+  });
 }
 
-function draw() {
-  clr();
-  drawLeft();
-  drawSep();
-  drawRight();
-  go(TH(), 1);
+function showResult(outcome) {
+  const area = $('result-area');
+  area.innerHTML = '';
+  const badge = el('div', 'result-badge');
+  if (outcome === 'WIN')  { badge.className += ' result-win';  badge.textContent = '🏆 WIN'; }
+  if (outcome === 'LOSS') { badge.className += ' result-loss'; badge.textContent = '💸 LOSS'; }
+  if (outcome === 'PUSH') { badge.className += ' result-push'; badge.textContent = '🤝 PUSH'; }
+  area.appendChild(badge);
 }
 
-// ── Overlays ──────────────────────────────────────────────────────────────────
-function showTutorial() {
-  clr();
-  const lines = [
-    '',
-    yel(bold('  ╔══════════════════════════════════════════════════╗')),
-    yel(bold('  ║     WELCOME TO BACCARAT  (PUNTO BANCO)           ║')),
-    yel(bold('  ╚══════════════════════════════════════════════════╝')),
-    '',
-    bold('  HOW TO PLAY'),
-    '  Two hands are dealt: Player and Banker.',
-    '  Bet on which gets closer to 9 — or bet on a Tie.',
-    '',
-    bold('  CARD VALUES'),
-    '  Ace=1   2–9=face value   10/J/Q/K=0',
-    '  Only the units digit counts: 8+7=15 → 5',
-    '',
-    bold('  THIRD CARDS'),
-    '  Player draws a 3rd card on 0–5, stands on 6–7.',
-    '  Banker follows a strict table (see the Lesson Panel).',
-    '  If either starting hand is 8 or 9 (Natural) — no draw.',
-    '',
-    bold('  PAYOUTS'),
-    `  ${blu('Player')} 1:1  |  ${red('Banker')} 0.95:1 (5% comm)  |  ${grn('Tie')} 8:1`,
-    '',
-    bold('  THE SHOE'),
-    '  8 decks shuffled, reshuffled when < 15 cards remain.',
-    '',
-    bold('  ROADS (right panel)'),
-    '  Tracks pattern history — fun, but baccarat is pure chance.',
-    '  Banker bet has the lowest house edge (~1.06%).',
-    '  Tie bet has the worst edge (~14.4%) — avoid it.',
-    '',
-    dim('  Press any key to start...'),
-  ];
-  lines.forEach((l, i) => { go(i+1, 1); out(l); });
+function clearTable() {
+  $('player-cards').innerHTML = '';
+  $('banker-cards').innerHTML = '';
+  $('player-score').textContent = '';
+  $('banker-score').textContent = '';
+  $('result-area').innerHTML = '';
 }
 
-function showStats() {
-  const s  = g.stats;
-  const sc = Math.max(1, Math.floor(TW()/2) - 22);
-  const sr = Math.max(1, Math.floor(TH()/2) - 8);
-  const wr = s.rounds > 0 ? (s.wins/s.rounds*100).toFixed(1)+'%' : 'N/A';
-  const pnl = (s.netPnL >= 0 ? '+$' : '-$') + Math.abs(s.netPnL).toFixed(2);
-  const cell = (label, val) => {
-    const inner = '  ' + label.padEnd(16) + String(val).padEnd(24);
-    return '\x1b[1m\x1b[36m║\x1b[0m' + inner.padEnd(42) + '\x1b[1m\x1b[36m║\x1b[0m';
-  };
-  const box = [
-    '\x1b[1m\x1b[36m╔══════════════════════════════════════════╗\x1b[0m',
-    '\x1b[1m\x1b[36m║\x1b[0m' + bold('          SESSION STATISTICS              ') + '\x1b[1m\x1b[36m║\x1b[0m',
-    '\x1b[1m\x1b[36m╠══════════════════════════════════════════╣\x1b[0m',
-    cell('Rounds:', s.rounds),
-    cell('Wins:', s.wins),
-    cell('Losses:', s.losses),
-    cell('Win rate:', wr),
-    cell('Biggest win:', '$'+s.bigWin.toFixed(2)),
-    cell('Biggest loss:', '$'+s.bigLoss.toFixed(2)),
-    cell('Net P&L:', pnl),
-    cell('Commission:', '$'+g.commission.toFixed(2)),
-    cell('Balance:', '$'+g.balance.toFixed(2)),
-    '\x1b[1m\x1b[36m╠══════════════════════════════════════════╣\x1b[0m',
-    '\x1b[1m\x1b[36m║\x1b[0m' + dim('       Press any key to continue          ') + '\x1b[1m\x1b[36m║\x1b[0m',
-    '\x1b[1m\x1b[36m╚══════════════════════════════════════════╝\x1b[0m',
-  ];
-  box.forEach((l, i) => { go(sr+i, sc); out(l); });
+// ── Betting ───────────────────────────────────────────────────────────────────
+function updateBetZones() {
+  document.querySelectorAll('.bet-zone').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.type === g.betType);
+  });
 }
 
-function showRuleSheet() {
-  clr();
-  const lines = [
-    yel(bold('  BACCARAT — FULL RULE SHEET')), '',
-    bold('  OBJECTIVE')  + '  Closest to 9 wins.',
-    bold('  CARD VALUES') + '  A=1  2-9=face  10/J/Q/K=0  (mod 10)',
-    '',
-    bold('  PLAYER 3RD CARD'),
-    '  0–5: draws   6–7: stands   8–9: Natural (no draw)',
-    '',
-    bold('  BANKER 3RD CARD'),
-    '  0–2: always draw',
-    '  3:   draw unless Player 3rd card = 8',
-    '  4:   draw if Player 3rd card = 2,3,4,5,6,7',
-    '  5:   draw if Player 3rd card = 4,5,6,7',
-    '  6:   draw if Player 3rd card = 6,7',
-    '  7:   stand',
-    '  8–9: Natural, no draw',
-    '  (If Player stood: Banker draws on 0–5, stands on 6–7)',
-    '',
-    bold('  PAYOUTS'),
-    `  ${blu('Player')}: 1:1`,
-    `  ${red('Banker')}: 0.95:1  (5% commission on winnings)`,
-    `  ${grn('Tie')}:    8:1  (worst expected value — ~14.4% house edge)`,
-    '',
-    bold('  SHOE')  + '  8 decks, reshuffled when < 15 remain.',
-    '',
-    dim('  Press any key...'),
-  ];
-  lines.forEach((l, i) => { go(i+1, 1); out(l); });
-}
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const amount = +chip.dataset.amount;
+    if (g.bet + amount > 500 || g.bet + amount > g.balance) return;
+    g.bet += amount;
+    updateBalance();
+    if (g.betType) showPhase('phase-deal');
+  });
+});
 
-function showRoadLegend() {
-  clr();
-  const lines = [
-    yel(bold('  ROAD LEGEND')), '',
-    bold('  BIG ROAD'),
-    `  ${red('●')}=Banker  ${blu('●')}=Player  ${grn('—')}=Tie`,
-    '  Same side wins → fill down the column.',
-    '  Side changes → start a new column.',
-    '  ⊗ = a Tie occurred on that result.',
-    '',
-    bold('  BIG EYE BOY'),
-    `  ${red('●')} Red = pattern repeating (col mirrors col 2 back)`,
-    `  ${blu('●')} Blue = pattern NOT repeating`,
-    '',
-    bold('  SMALL ROAD'),
-    '  Same idea but compares 3 columns back.',
-    '',
-    '  ⚠️  These tools are casino tradition.',
-    '  They do NOT predict outcomes — baccarat is pure chance.',
-    '  Banker bet edge: ~1.06%   Tie bet edge: ~14.4%',
-    '',
-    dim('  Press any key...'),
-  ];
-  lines.forEach((l, i) => { go(i+1, 1); out(l); });
-}
+document.querySelectorAll('.bet-zone').forEach(btn => {
+  btn.addEventListener('click', () => {
+    g.betType = btn.dataset.type;
+    updateBetZones();
+    if (g.bet > 0) showPhase('phase-deal');
+  });
+});
 
-function showSummary() {
-  clr();
-  const s   = g.stats;
-  const wr  = s.rounds > 0 ? (s.wins/s.rounds*100).toFixed(1)+'%' : 'N/A';
-  const pnl = (s.netPnL >= 0 ? '+$' : '-$') + Math.abs(s.netPnL).toFixed(2);
-  const lines = [
-    '',
-    yel(bold('  ╔══════════════════════════════════════╗')),
-    yel(bold('  ║          SESSION SUMMARY             ║')),
-    yel(bold('  ╚══════════════════════════════════════╝')),
-    '',
-    `  Rounds played:  ${s.rounds}`,
-    `  Wins / Losses:  ${s.wins} / ${s.losses}`,
-    `  Win rate:       ${wr}`,
-    `  Biggest win:    $${s.bigWin.toFixed(2)}`,
-    `  Biggest loss:   $${s.bigLoss.toFixed(2)}`,
-    `  Net P&L:        ${pnl}`,
-    `  Commission:     $${g.commission.toFixed(2)}`,
-    `  Final balance:  $${g.balance.toFixed(2)}`,
-    '',
-    dim('  Thanks for playing Baccarat!'),
-    '',
-    dim('  Refresh the page to play again.'),
-  ];
-  lines.forEach((l, i) => { go(i+1, 1); out(l); });
-}
+$('btn-clear-bet').addEventListener('click', () => {
+  g.bet = 0;
+  g.betType = null;
+  updateBalance();
+  updateBetZones();
+  showPhase('phase-bet');
+});
 
-// ── Command handler ───────────────────────────────────────────────────────────
-const sleep = ms => new Promise(res => setTimeout(res, ms));
+// ── Deal ──────────────────────────────────────────────────────────────────────
+$('btn-deal').addEventListener('click', async () => {
+  if (!g.bet || !g.betType) return;
+  $('btn-deal').disabled = true;
+  g.balance -= g.bet;
+  updateBalance();
+  clearTable();
 
-async function handleCmd(key) {
-  const k = key.toLowerCase();
-  if (k === 'q') return 'quit';
-  if (k === 'l') { g.lessons = !g.lessons; return 'continue'; }
-  if (k === 's') { draw(); showStats(); await getKey(); return 'continue'; }
-  if (k === 'r') { showRoadLegend(); await getKey(); return 'continue'; }
-  if (k === '?') { showRuleSheet();  await getKey(); return 'continue'; }
-  return null;
-}
-
-// ── Game round ────────────────────────────────────────────────────────────────
-async function playRound() {
-  let amount;
-  while (true) {
-    draw();
-    go(TH()-2, 1); out('\x1b[2K');
-    go(TH()-1, 1); out('\x1b[2K');
-    go(TH()-2, 1); out(`Enter bet $10–$500 (balance $${g.balance.toFixed(2)}): `);
-    const raw = await getLine('');
-    const n = parseInt(raw, 10);
-    if (!isNaN(n) && n >= 10 && n <= 500 && n <= g.balance) { amount = n; break; }
-    go(TH()-1, 1); out(red('Invalid. Enter $10–$500 within your balance.'));
-    await sleep(1200);
-  }
-
-  let betType;
-  while (true) {
-    draw();
-    go(TH()-2, 1); out('\x1b[2K');
-    go(TH()-1, 1); out('\x1b[2K');
-    go(TH()-2, 1); out('Bet: [P]layer  [B]anker  [T]ie   or [L/S/R/Q/?]: ');
-    const key = await getKey();
-    const k   = key.toLowerCase();
-    if (k === 'p') { betType = 'player'; break; }
-    if (k === 'b') { betType = 'banker'; break; }
-    if (k === 't') { betType = 'tie';    break; }
-    const cmd = await handleCmd(key);
-    if (cmd === 'quit') return false;
-  }
-
-  g.bet     = amount;
-  g.betType = betType;
-  g.balance -= amount;
-  g.outcome  = null;
-  g.winner   = null;
-  g.player   = [];
-  g.banker   = [];
-
+  const pCards = $('player-cards');
+  const bCards = $('banker-cards');
   const p1 = dealCard(), b1 = dealCard(), p2 = dealCard(), b2 = dealCard();
-  g.player = [p1];       draw(); await sleep(220);
-  g.banker = [b1];       draw(); await sleep(220);
-  g.player = [p1, p2];   draw(); await sleep(220);
-  g.banker = [b1, b2];   draw(); await sleep(220);
-  await sleep(300);
 
-  const pt = handTot(g.player);
-  const bt = handTot(g.banker);
+  g.player = [p1]; renderCard(p1, pCards, 0);   updateScores(); await sleep(250);
+  g.banker = [b1]; renderCard(b1, bCards, 0);   updateScores(); await sleep(250);
+  g.player = [p1,p2]; renderCard(p2, pCards, 0); updateScores(); await sleep(250);
+  g.banker = [b1,b2]; renderCard(b2, bCards, 0); updateScores(); await sleep(300);
+
+  const pt = handTot(g.player), bt = handTot(g.banker);
   const explain = [];
 
   if (pt >= 8 || bt >= 8) {
-    const who = (pt>=8 && bt>=8) ? 'Both hands have' : pt>=8 ? 'Player has' : 'Banker has';
-    explain.push(`NATURAL ${Math.max(pt,bt)}! ${who} a Natural.`);
-    explain.push('Natural 8 or 9: no 3rd cards are drawn.');
-    explain.push('The higher natural wins; equal naturals tie.');
+    const who = (pt>=8&&bt>=8) ? 'Both have' : pt>=8 ? 'Player has' : 'Banker has';
+    explain.push({ cls: 'le-natural', text: `NATURAL ${Math.max(pt,bt)}! ${who} a Natural — no more cards.` });
+    explain.push({ cls: '',           text: 'Natural 8 or 9: higher natural wins; equal naturals tie.' });
   } else {
     let playerDrew = false, p3card = null;
     if (pt <= 5) {
       p3card = dealCard();
       g.player = [...g.player, p3card];
-      draw(); await sleep(280);
+      renderCard(p3card, pCards, 0); updateScores(); await sleep(280);
       playerDrew = true;
-      explain.push(`Player drew 3rd card (total ${pt} ≤ 5 → draw on 0–5).`);
+      explain.push({ cls: 'le-draw', text: `Player drew 3rd card (total ${pt} ≤ 5 → draw on 0–5).` });
     } else {
-      explain.push(`Player stands (total ${pt} — stand on 6–7).`);
+      explain.push({ cls: 'le-stand', text: `Player stands (total ${pt} — stand on 6–7).` });
     }
     const bt2 = handTot(g.banker);
     const p3v = p3card ? cardVal(p3card.rank) : null;
     const bd  = bankerDecision(bt2, playerDrew, p3v);
-    explain.push(bd.why);
+    explain.push({ cls: bd.draws ? 'le-draw' : 'le-stand', text: bd.why });
     if (bd.draws) {
       await sleep(200);
-      g.banker = [...g.banker, dealCard()];
-      draw(); await sleep(280);
+      const b3 = dealCard();
+      g.banker = [...g.banker, b3];
+      renderCard(b3, bCards, 0); updateScores(); await sleep(280);
     }
   }
 
   const fp = handTot(g.player), fb = handTot(g.banker);
   const winner = fp > fb ? 'player' : fb > fp ? 'banker' : 'tie';
   resolveResult(winner, explain);
-  g.lessonLines = explain;
-  draw();
+  setLessonLines(explain);
+  updateBalance();
+  updateHistory();
+  updateRoads();
+  showResult(g.outcome);
+  showPhase('phase-result');
+});
 
-  go(TH()-2, 1); out('\x1b[2K');
-  go(TH()-2, 1); out(dim('[ENTER/SPACE] next round   [L/S/R/Q/?] commands'));
-
-  while (true) {
-    const key = await getKey();
-    const k   = key.toLowerCase();
-    if (k === '\r' || k === '\n' || k === ' ') break;
-    const cmd = await handleCmd(key);
-    if (cmd === 'quit') return false;
-    draw();
-    go(TH()-2, 1); out('\x1b[2K');
-    go(TH()-2, 1); out(dim('[ENTER/SPACE] next round   [L/S/R/Q/?] commands'));
-  }
-
-  g.player  = [];
-  g.banker  = [];
-  g.bet     = 0;
+// ── Next hand ─────────────────────────────────────────────────────────────────
+$('btn-next').addEventListener('click', () => {
+  g.bet = 0;
   g.betType = null;
   g.outcome = null;
-  g.winner  = null;
-  return g.balance >= 10;
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-async function startGame() {
-  showTutorial();
-  await getKey();
-  draw();
-
-  while (true) {
-    if (g.balance < 10) {
-      go(TH()-1, 1);
-      out(red(bold('Insufficient balance — game over!')));
-      await sleep(2000);
-      break;
-    }
-    const cont = await playRound();
-    if (!cont) break;
+  clearTable();
+  updateBalance();
+  updateBetZones();
+  $('btn-deal').disabled = false;
+  showPhase('phase-bet');
+  if (g.balance < 10) {
+    $('result-area').innerHTML = '<div class="result-badge result-loss">Game Over</div>';
+    showPhase('phase-result');
+    $('btn-next').textContent = 'Refresh to play again';
+    $('btn-next').onclick = () => location.reload();
   }
+});
 
-  showSummary();
-}
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.ptab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.ptab-content').forEach(c => c.classList.add('hidden'));
+    $(`tab-${tab.dataset.tab}`).classList.remove('hidden');
+  });
+});
+
+// ── Lessons toggle ────────────────────────────────────────────────────────────
+$('btn-lessons-toggle').addEventListener('click', () => {
+  const panel = $('side-panel');
+  const btn   = $('btn-lessons-toggle');
+  if (panel.style.display === 'none') {
+    panel.style.display = '';
+    btn.textContent = 'Lessons ✓';
+    btn.classList.add('active');
+  } else {
+    panel.style.display = 'none';
+    btn.textContent = 'Lessons';
+    btn.classList.remove('active');
+  }
+});
+
+// ── Stats modal ───────────────────────────────────────────────────────────────
+$('btn-stats').addEventListener('click', () => {
+  const s  = g.stats;
+  const wr = s.rounds > 0 ? (s.wins/s.rounds*100).toFixed(1)+'%' : 'N/A';
+  const pnl = (s.netPnL >= 0 ? '+$' : '-$') + Math.abs(s.netPnL).toFixed(2);
+  const rows = [
+    ['Rounds', s.rounds], ['Wins', s.wins], ['Losses', s.losses],
+    ['Win rate', wr], ['Biggest win', '$'+s.bigWin.toFixed(2)],
+    ['Biggest loss', '$'+s.bigLoss.toFixed(2)], ['Net P&L', pnl],
+    ['Commission', '$'+g.commission.toFixed(2)], ['Balance', '$'+g.balance.toFixed(2)],
+  ];
+  $('stats-body').innerHTML = rows.map(([l,v]) =>
+    `<div class="stats-row"><span>${l}</span><span>${v}</span></div>`).join('');
+  $('modal-stats').classList.remove('hidden');
+});
+
+$('btn-rules').addEventListener('click', () => $('modal-rules').classList.remove('hidden'));
+
+document.querySelectorAll('.modal-close').forEach(btn => {
+  btn.addEventListener('click', () => $(`${btn.dataset.close}`).classList.add('hidden'));
+});
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.add('hidden'); });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+updateBalance();
+updateHistory();
+updateRoads();
+showPhase('phase-bet');
+$('insight-box').style.display = 'none';

@@ -1,65 +1,203 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Baccarat Terminal</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      background: #0d0d0d;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-    }
-    #terminal {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-    }
-    /* force xterm canvas to fill container */
-    .xterm,
-    .xterm-screen,
-    .xterm-helpers { height: 100% !important; }
-    .xterm-viewport { overflow-y: hidden !important; }
-    .xterm .xterm-screen canvas { display: block; }
-
-    #mobile-warning {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: #0d0d0d;
-      color: #e0e0e0;
-      font-family: monospace;
-      font-size: 16px;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 32px;
-      z-index: 100;
-    }
-    #mobile-warning h2 { color: #e5c07b; margin-bottom: 16px; }
-    #mobile-warning p  { color: #888; margin-top: 12px; line-height: 1.6; }
-    @media (max-width: 700px) {
-      #mobile-warning { display: flex; flex-direction: column; }
-      #terminal { display: none; }
-    }
-  </style>
+  <title>Baccarat</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <div id="mobile-warning">
-    <h2>🎴 Baccarat Terminal</h2>
-    <p>Este juego requiere un teclado y pantalla ancha para funcionar correctamente.</p>
-    <p>Abrilo desde una computadora de escritorio o laptop.</p>
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">🎴 BACCARAT</div>
+    <div class="balance-area">
+      <div class="stat-chip">
+        <span class="stat-label">Balance</span>
+        <span class="stat-value green" id="balance">$1,000.00</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Bet</span>
+        <span class="stat-value gold" id="current-bet-display">$0</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Commission</span>
+        <span class="stat-value red" id="commission">$0.00</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-hdr" id="btn-stats">Stats</button>
+      <button class="btn-hdr" id="btn-rules">Rules</button>
+      <button class="btn-hdr active" id="btn-lessons-toggle">Lessons ✓</button>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- TABLE -->
+    <div class="table-wrap">
+      <div class="felt">
+
+        <!-- Banker -->
+        <div class="hand-row">
+          <div class="hand-meta">
+            <span class="hand-name banker-name">BANKER</span>
+            <span class="hand-score" id="banker-score"></span>
+          </div>
+          <div class="cards-row" id="banker-cards"></div>
+        </div>
+
+        <!-- Result banner -->
+        <div class="result-area" id="result-area"></div>
+
+        <!-- Player -->
+        <div class="hand-row">
+          <div class="hand-meta">
+            <span class="hand-name player-name">PLAYER</span>
+            <span class="hand-score" id="player-score"></span>
+          </div>
+          <div class="cards-row" id="player-cards"></div>
+        </div>
+
+      </div>
+
+      <!-- History -->
+      <div class="history-bar">
+        <span class="history-label">Last 10</span>
+        <div class="history-dots" id="history-dots"></div>
+      </div>
+    </div>
+
+    <!-- SIDE PANEL -->
+    <aside class="side-panel" id="side-panel">
+      <div class="panel-tabs">
+        <button class="ptab active" data-tab="roads">Roads</button>
+        <button class="ptab" data-tab="lessons">Lessons</button>
+      </div>
+
+      <!-- Roads tab -->
+      <div class="ptab-content" id="tab-roads">
+        <div class="road-block">
+          <p class="road-title">Big Road <span class="road-hint">— same side = down, switch = new column</span></p>
+          <div class="road-grid" id="big-road" data-cols="13" data-rows="6"></div>
+        </div>
+        <div class="road-block">
+          <p class="road-title">Big Eye Boy <span class="road-hint">— Red = pattern repeating</span></p>
+          <div class="road-grid compact" id="big-eye-boy" data-cols="16" data-rows="3"></div>
+        </div>
+        <div class="road-block">
+          <p class="road-title">Small Road <span class="road-hint">— one column further back</span></p>
+          <div class="road-grid compact" id="small-road" data-cols="16" data-rows="3"></div>
+        </div>
+        <div class="insight-box" id="insight-box">
+          <p id="insight-text"></p>
+          <p id="prediction-text" class="prediction-line"></p>
+        </div>
+      </div>
+
+      <!-- Lessons tab -->
+      <div class="ptab-content hidden" id="tab-lessons">
+        <div class="lesson-dynamic" id="lesson-dynamic">
+          <p class="lesson-intro">Place your first bet to begin.</p>
+        </div>
+        <hr class="lesson-sep">
+        <div class="lesson-static">
+          <p class="ls-title">Card Values</p>
+          <p class="ls-body">A = 1 &nbsp;·&nbsp; 2–9 = face &nbsp;·&nbsp; 10/J/Q/K = 0<br>Total = (sum) mod 10</p>
+          <p class="ls-title" style="margin-top:12px">3rd Card — Player</p>
+          <p class="ls-body">0–5 draws &nbsp;·&nbsp; 6–7 stands &nbsp;·&nbsp; 8–9 Natural</p>
+          <p class="ls-title" style="margin-top:12px">3rd Card — Banker</p>
+          <div class="rule-table">
+            <div class="rt-row"><span class="rt-total">0–2</span><span class="rt-rule">Always draws</span></div>
+            <div class="rt-row"><span class="rt-total">3</span><span class="rt-rule">Draw unless P3 = 8</span></div>
+            <div class="rt-row"><span class="rt-total">4</span><span class="rt-rule">Draw if P3 = 2–7</span></div>
+            <div class="rt-row"><span class="rt-total">5</span><span class="rt-rule">Draw if P3 = 4–7</span></div>
+            <div class="rt-row"><span class="rt-total">6</span><span class="rt-rule">Draw if P3 = 6–7</span></div>
+            <div class="rt-row"><span class="rt-total">7</span><span class="rt-rule">Stands</span></div>
+            <div class="rt-row"><span class="rt-total">8–9</span><span class="rt-rule">Natural — no draw</span></div>
+          </div>
+          <p class="ls-title" style="margin-top:12px">Payouts</p>
+          <div class="payout-table">
+            <div class="pt-row"><span class="pt-side player">Player</span><span class="pt-pay">1:1</span></div>
+            <div class="pt-row"><span class="pt-side banker">Banker</span><span class="pt-pay">0.95:1 <em>(5% comm)</em></span></div>
+            <div class="pt-row"><span class="pt-side tie">Tie</span><span class="pt-pay">8:1</span></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- FOOTER: betting controls -->
+  <footer class="footer">
+
+    <!-- Phase: place bet -->
+    <div class="phase" id="phase-bet">
+      <div class="bet-zones">
+        <button class="bet-zone player-zone" data-type="player">
+          <span class="bz-name">PLAYER</span>
+          <span class="bz-pay">1 : 1</span>
+        </button>
+        <button class="bet-zone tie-zone" data-type="tie">
+          <span class="bz-name">TIE</span>
+          <span class="bz-pay">8 : 1</span>
+        </button>
+        <button class="bet-zone banker-zone" data-type="banker">
+          <span class="bz-name">BANKER</span>
+          <span class="bz-pay">0.95 : 1</span>
+        </button>
+      </div>
+      <div class="chip-row">
+        <button class="chip c10"  data-amount="10">$10</button>
+        <button class="chip c25"  data-amount="25">$25</button>
+        <button class="chip c50"  data-amount="50">$50</button>
+        <button class="chip c100" data-amount="100">$100</button>
+        <button class="chip c500" data-amount="500">$500</button>
+        <button class="chip-clear" id="btn-clear-bet">✕ Clear</button>
+      </div>
+    </div>
+
+    <!-- Phase: deal -->
+    <div class="phase hidden" id="phase-deal">
+      <button class="btn-deal" id="btn-deal">DEAL</button>
+    </div>
+
+    <!-- Phase: result -->
+    <div class="phase hidden" id="phase-result">
+      <button class="btn-next" id="btn-next">Next Hand →</button>
+    </div>
+
+  </footer>
+
+  <!-- MODAL: Stats -->
+  <div class="modal-overlay hidden" id="modal-stats">
+    <div class="modal">
+      <div class="modal-header">Session Stats <button class="modal-close" data-close="modal-stats">✕</button></div>
+      <div class="modal-body" id="stats-body"></div>
+    </div>
   </div>
 
-  <div id="terminal"></div>
+  <!-- MODAL: Rules -->
+  <div class="modal-overlay hidden" id="modal-rules">
+    <div class="modal">
+      <div class="modal-header">Full Rule Sheet <button class="modal-close" data-close="modal-rules">✕</button></div>
+      <div class="modal-body">
+        <p><strong>Objective:</strong> Get closer to 9 than the other hand.</p>
+        <p><strong>Card values:</strong> A=1 · 2–9=face · 10/J/Q/K=0 · total = sum mod 10</p>
+        <p style="margin-top:8px"><strong>Player 3rd card:</strong> 0–5 draws · 6–7 stands · 8–9 Natural</p>
+        <p style="margin-top:8px"><strong>Banker 3rd card:</strong></p>
+        <p>0–2: always draw · 3: draw unless P3=8 · 4: draw if P3=2–7</p>
+        <p>5: draw if P3=4–7 · 6: draw if P3=6–7 · 7: stands · 8–9: Natural</p>
+        <p>If Player stood: Banker draws on 0–5, stands on 6–7.</p>
+        <p style="margin-top:8px"><strong>Payouts:</strong> Player 1:1 · Banker 0.95:1 (5% comm) · Tie 8:1</p>
+        <p style="margin-top:8px"><strong>Shoe:</strong> 8 decks, reshuffled when &lt;15 cards remain.</p>
+        <p style="margin-top:8px;color:#888;font-size:13px">Banker has the lowest house edge (~1.06%). Tie has the worst (~14.4%).</p>
+      </div>
+    </div>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
