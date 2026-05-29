@@ -12,9 +12,11 @@ No requiere instalación. Funciona en cualquier browser.
 
 ## ¿Qué hace diferente este juego?
 
-**Te hace preguntas.** Después de cada mano, el panel de lecciones te pregunta sobre lo que acaba de pasar — ¿por qué sacó carta el Player? ¿qué significa este patrón? ¿cuánto gana una apuesta al Banker? Respondés, y te dice si estás bien o mal con una explicación.
+**Te enseña a leer los roads.** Después de cada mano el coach explica qué significan los nuevos puntos en Big Road, Big Eye Boy y Small Road — en texto plano, no en jerga de casino. A partir de la mano 9, lee los tres roads en tiempo real y te dice qué patrón detecta y qué apuesta sugieren.
 
-**Te da contexto antes de apostar.** Antes de cada mano, el coach te muestra qué patrón hay en el historial y qué haría un jugador de casino — con la advertencia matemática honesta de que los roads son superstición.
+**Te hace preguntas.** Después de cada mano te pregunta sobre lo que acaba de pasar — ¿por qué sacó carta el Player? ¿qué significa este patrón? ¿qué señal dan los roads? Respondés, feedback inmediato en verde o rojo.
+
+**Te da contexto antes de apostar.** Las primeras 8 manos tienen lecciones progresivas (puntuación, comisión, Big Road, Dragon Tail, Ping-Pong, Double Road, Big Eye Boy, Small Road). Después, el coach lee los roads en vivo cada mano.
 
 ---
 
@@ -28,7 +30,7 @@ No requiere instalación. Funciona en cualquier browser.
 
 **Quiz interactivo** — después de cada mano te pregunta sobre lo que pasó. Tres opciones, feedback inmediato en verde o rojo, con explicación de por qué.
 
-**Los roads del casino** — Big Road, Big Eye Boy, Small Road. Lo que significan, cómo leerlos, y por qué los casinos los muestran en pantallas gigantes. El juego te los explica con preguntas específicas en la mano 5 y 8.
+**Los roads del casino** — Big Road, Big Eye Boy, Small Road. El juego detecta Dragon Tail, Ping-Pong y Double Road, explica cada punto nuevo en plain English, y combina los tres roads en una señal de apuesta con el disclaimer matemático honesto.
 
 **La matemática honesta** — te recuerda en cada paso que los roads son superstición. El Banker tiene el menor house edge (~1.06%). El Tie es la peor apuesta (~14.4%).
 
