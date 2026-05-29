@@ -1,22 +1,20 @@
-# 🎴 Baccarat Terminal
+# 🎴 Baccarat
 
-Punto Banco jugable en la terminal. Te enseña las reglas mientras jugás — tercera carta, naturales, roads del casino, y por qué la ventaja de la casa es lo que es.
+Baccarat (Punto Banco) jugable en el browser. Te enseña las reglas interactivamente — pregunta, espera tu respuesta, y te explica exactamente qué pasó y por qué.
 
-![Node.js](https://img.shields.io/badge/Node.js-builtin--only-339933?style=flat-square&logo=nodedotjs) ![Single File](https://img.shields.io/badge/Single%20file-741%20lines-f59e0b?style=flat-square) ![Zero deps](https://img.shields.io/badge/Dependencies-zero-22c55e?style=flat-square)
+![Web App](https://img.shields.io/badge/Web%20App-No%20install-3b82f6?style=flat-square) ![Zero deps](https://img.shields.io/badge/Dependencies-zero-22c55e?style=flat-square) ![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-live-f59e0b?style=flat-square)
 
 ## 🔗 [Jugar → tommyhanono.github.io/baccarat-terminal](https://tommyhanono.github.io/baccarat-terminal/)
 
-No requiere instalación. Funciona en el browser, requiere teclado.
+No requiere instalación. Funciona en cualquier browser.
 
 ---
 
-## ▶️ Correr localmente
+## ¿Qué hace diferente este juego?
 
-```bash
-node baccarat.js
-```
+**Te hace preguntas.** Después de cada mano, el panel de lecciones te pregunta sobre lo que acaba de pasar — ¿por qué sacó carta el Player? ¿qué significa este patrón? ¿cuánto gana una apuesta al Banker? Respondés, y te dice si estás bien o mal con una explicación.
 
-Sin instalación. Sin dependencias externas. Solo Node.js.
+**Te da contexto antes de apostar.** Antes de cada mano, el coach te muestra qué patrón hay en el historial y qué haría un jugador de casino — con la advertencia matemática honesta de que los roads son superstición.
 
 ---
 
@@ -28,9 +26,11 @@ Sin instalación. Sin dependencias externas. Solo Node.js.
 
 **Las reglas completas de Punto Banco** — regla de tercera carta del Banker, naturales, empates como push. El panel de lecciones te explica *exactamente* por qué se repartió o no cada carta.
 
-**Los roads del casino** — Big Road, Big Eye Boy, Small Road. Lo que significan, cómo leerlos, y por qué los casinos los muestran en pantallas gigantes.
+**Quiz interactivo** — después de cada mano te pregunta sobre lo que pasó. Tres opciones, feedback inmediato en verde o rojo, con explicación de por qué.
 
-**La matemática honesta** — la app te recuerda en cada paso que los roads son superstición. El Banker tiene el menor house edge (~1.06%). El Tie es la peor apuesta del casino (~14.4%).
+**Los roads del casino** — Big Road, Big Eye Boy, Small Road. Lo que significan, cómo leerlos, y por qué los casinos los muestran en pantallas gigantes. El juego te los explica con preguntas específicas en la mano 5 y 8.
+
+**La matemática honesta** — te recuerda en cada paso que los roads son superstición. El Banker tiene el menor house edge (~1.06%). El Tie es la peor apuesta (~14.4%).
 
 **Comisión del Banker** — el 5% se trackea por separado y te lo muestra en pantalla, igual que un casino real.
 
@@ -50,27 +50,19 @@ Sin instalación. Sin dependencias externas. Solo Node.js.
 | Desarrollar una estrategia ganadora | ❌ No existe |
 | Reducir la ventaja del casino | ❌ Solo apostando Banker siempre |
 
-**La mejor apuesta en Baccarat siempre es Banker.** Edge de ~1.06% vs ~1.24% Player vs ~14.4% Tie. Si vas a apostar algo, apostá siempre Banker e ignorá los roads.
+**La mejor apuesta en Baccarat siempre es Banker.** Edge de ~1.06% vs ~1.24% Player vs ~14.4% Tie.
 
 ---
 
 ## Interfaz
 
-La terminal se divide en dos columnas en tiempo real:
+**Mesa (centro)** — felt verde con animación de cartas, score visible en tiempo real, banner de resultado (WIN / LOSS / PUSH), historial de las últimas 10 rondas.
 
-**Columna izquierda (60%)**
-- Título ASCII art
-- Balance, apuesta actual y comisión acumulada
-- Mesa de cartas con arte ASCII por palo, animadas una a una
-- Banner de resultado (WIN / LOSS / PUSH)
-- Historial de las últimas 10 rondas
+**Panel derecho** — dos tabs:
+- **Roads**: Big Road, Big Eye Boy, Small Road en tiempo real + insight de patrones
+- **Lessons**: Coach tip antes de apostar / Quiz interactivo después de cada mano
 
-**Columna derecha (40%)**
-- Panel de lecciones (toggle con `L`) — explica qué pasó en la ronda y por qué
-- Cheat sheet de valores de cartas y regla de tercera carta
-- Tabla de pagos
-- Big Road, Big Eye Boy y Small Road en tiempo real
-- Insight de patrones y "predicción" (marcada como superstición)
+**Footer** — seleccionás lado (Player / Tie / Banker) + fichas ($10–$500) → botón DEAL → resultado → Next Hand.
 
 ---
 
@@ -99,21 +91,3 @@ Los tres son herramientas tradicionales de los casinos para darle la ilusión de
 | Pago Tie | 8:1 |
 | Balance inicial | $1,000 |
 | Apuesta mínima / máxima | $10 / $500 |
-
----
-
-## Comandos
-
-| Tecla | Acción |
-|---|---|
-| `L` | Toggle panel de lecciones |
-| `S` | Estadísticas de la sesión |
-| `R` | Leyenda de los roads |
-| `?` | Reglas completas |
-| `Q` | Salir (muestra resumen de sesión) |
-
----
-
-## Al salir
-
-Muestra resumen completo: rondas jugadas, win rate, mayor ganancia, mayor pérdida, P&L neto y total de comisión pagada al Banker.
